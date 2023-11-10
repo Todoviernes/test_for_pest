@@ -3,6 +3,8 @@ from django.db.models import CharField, EmailField
 from django.urls import reverse
 from django.utils.translation import gettext_lazy as _
 from django.db import models
+from django.core.mail import send_mail
+from django.core.validators import RegexValidator
 
 from test_for_pest.users.managers import UserManager
 
@@ -38,14 +40,23 @@ class User(AbstractUser):
 
 class Customer(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE)
-    phone = models.CharField(max_length=20, blank=True, null=True)
+    phone_regex = RegexValidator(
+        regex=r'^\+?1?\d{9,15}$',
+        message="Phone number must be entered in the format: '+999999999'. Up to 15 digits allowed."
+        )
+    phone = models.CharField(validators=[phone_regex], max_length=17, blank=True)
     address = models.CharField(max_length=200, blank=True, null=True)
-                               
-                               
+
+    def __str__(self):
+        return self.user.email
+
+              
 class TestOperator(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='test_operator_profile')
     location = models.CharField(max_length=100)
-    
+
+    def __str__(self):
+        return self.user.email
     
 class GovernmentOfficial(models.Model):
     user = models.OneToOneField(User, on_delete=models.CASCADE, related_name='government_official_profile')
@@ -62,12 +73,21 @@ class Appointment(models.Model):
     test_operator = models.ForeignKey(TestOperator, on_delete=models.CASCADE, related_name='operated_appointments')
     scheduled_time = models.DateTimeField()
     status = models.CharField(max_length=50)
-    
-    
+
+class Disease(models.Model):
+    name = models.CharField(max_length=100, blank=True, null=True)
+    description = models.TextField(blank=True, null=True)
+
+    def __str__(self):
+        return self.name
+
+
 class TestResult(models.Model):
     appointment = models.ForeignKey(Appointment, on_delete=models.CASCADE, related_name='test_results')
     result = models.CharField(max_length=50)  # Consider using choices for predefined results
     disease_tested = models.CharField(max_length=100)
+    disease = models.ForeignKey(Disease, on_delete=models.CASCADE)
+
 
 
 class Statistics(models.Model):
@@ -82,3 +102,13 @@ class Communication(models.Model):
     government_official = models.ForeignKey(GovernmentOfficial, on_delete=models.CASCADE, related_name='sent_communications')
     message_content = models.TextField()
     timestamp = models.DateTimeField()
+
+    def send_message(self):
+        send_mail(
+            'Test for Pest Communication',
+            self.message_content,
+            'from@example.com',
+            [self.customer.user.email],
+            fail_silently=False,
+        )
+        
